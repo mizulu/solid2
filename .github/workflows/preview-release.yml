@@ -54,6 +54,7 @@ jobs:
       - name: Check for an existing successful publish
         id: ledger
         env:
+          GH_TOKEN: ${{ github.token }}
           UPSTREAM_SHA: ${{ inputs.commit }}
         run: |
           set -euo pipefail
@@ -194,12 +195,13 @@ jobs:
           fi
 
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          COMMIT_DATE=$(gh api "repos/solidjs/solid/commits/$UPSTREAM_SHA" --jq .commit.committer.date)
           test -f db.json || printf '{"builds":[]}\n' > db.json
           test -f failure.json || printf '{"failures":[]}\n' > failure.json
 
           if [ "$CONCLUSION" = success ]; then
-            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" \
-              '.builds = (((.builds // []) | map({sha, completedAt}) | map(select(.sha != $sha))) + [{sha: $sha, completedAt: $completedAt}])' \
+            jq --arg sha "$UPSTREAM_SHA" --arg commitDate "$COMMIT_DATE" --arg completedAt "$NOW" \
+              '.builds = (((.builds // []) | map({sha, commitDate, completedAt}) | map(select(.sha != $sha))) + [{sha: $sha, commitDate: $commitDate, completedAt: $completedAt}])' \
               db.json > db.json.tmp && mv db.json.tmp db.json
             jq --arg sha "$UPSTREAM_SHA" \
               '.failures = ((.failures // []) | map(select(.sha != $sha)))' \
