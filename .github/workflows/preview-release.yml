@@ -1,6 +1,16 @@
 name: Preview Release (pkg.pr.new)
 
 on:
+  workflow_call:
+    inputs:
+      commit:
+        description: "Full solidjs/solid commit SHA to build"
+        required: true
+        type: string
+      trigger:
+        description: "Origin of this build request"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       commit:

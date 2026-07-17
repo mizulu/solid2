@@ -4,28 +4,44 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  actions: write
-  contents: read
-  issues: write
+permissions: {}
 
 jobs:
   request:
     if: startsWith(github.event.comment.body, '/preview')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      sha: ${{ steps.request.outputs.sha }}
     steps:
-      - name: Parse request and dispatch publish
+      - name: Parse and validate request
+        id: request
         env:
           GH_TOKEN: ${{ github.token }}
-          # keep the untrusted comment body out of shell interpolation
+          # Keep the untrusted comment body out of shell interpolation.
           BODY: ${{ github.event.comment.body }}
           ISSUE: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
-          SHA=$(printf '%s' "$BODY" | head -1 | grep -oE '^/preview[[:space:]]+[0-9a-fA-F]{7,40}' | grep -oE '[0-9a-fA-F]{7,40}$' || true)
+          set -euo pipefail
+          REQUESTED=$(printf '%s' "$BODY" | head -1 | grep -oE '^/preview[[:space:]]+[0-9a-fA-F]{7,40}' | grep -oE '[0-9a-fA-F]{7,40}$' || true)
 
+          if [ -z "$REQUESTED" ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" --body "Usage: \`/preview <commit sha>\` — a 7-40 character SHA from [solidjs/solid](https://github.com/solidjs/solid/commits/next)."
+            exit 0
+          fi
+
+          SHA=$(gh api "repos/solidjs/solid/commits/$REQUESTED" --jq .sha 2>/dev/null || true)
           if [ -z "$SHA" ]; then
-            gh issue comment "$ISSUE" --repo "$REPO" --body "Usage: \`/preview <commit sha>\` — a 7-40 char sha from [solidjs/solid](https://github.com/solidjs/solid/commits/next)."
+            gh issue comment "$ISSUE" --repo "$REPO" --body "Commit \`$REQUESTED\` was not found in solidjs/solid."
+            exit 0
+          fi
+
+          STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status 2>/dev/null || true)
+          if [ "$STATUS" != behind ] && [ "$STATUS" != identical ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" --body "Commit \`$SHA\` is not reachable from solidjs/solid's \`next\` branch."
             exit 0
           fi
 
@@ -35,21 +51,27 @@ jobs:
             exit 0
           fi
 
-          gh workflow run sync-preview-mirror.yml --repo "$REPO" -f commit="$SHA"
-
-          SHORT=$(printf '%s' "$SHA" | cut -c1-7 | tr 'A-F' 'a-f')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          SHORT=${SHA:0:7}
           {
             echo "🚀 Building preview packages for \`$SHA\`… (~3 min, [progress](https://github.com/$REPO/actions))"
             echo
-            echo "Once the **Preview Release** run is green:"
+            echo "Once the run is green:"
             echo
-            echo '```'
+            echo '```sh'
             echo "npm i https://pkg.pr.new/$REPO/solid-js@$SHORT"
             echo "npm i https://pkg.pr.new/$REPO/@solidjs/web@$SHORT"
             echo '```'
-            echo
-            echo "Same pattern for \`@solidjs/signals\`, \`@solidjs/h\`, \`@solidjs/html\`, \`@solidjs/element\`, \`@solidjs/universal\`, \`babel-preset-solid\`."
-            echo
-            echo "If the run fails, check that the sha exists on [solidjs/solid](https://github.com/solidjs/solid)."
           } > /tmp/preview-comment.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/preview-comment.md
+
+  publish:
+    needs: request
+    if: needs.request.outputs.sha != ''
+    uses: ./.github/workflows/preview-release.yml
+    with:
+      commit: ${{ needs.request.outputs.sha }}
+      trigger: preview-request
+    permissions:
+      contents: write
+      issues: write
