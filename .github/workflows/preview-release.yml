@@ -29,7 +29,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    name: Check success ledger
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_build: ${{ steps.ledger.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Check for an existing successful publish
+        id: ledger
+        env:
+          UPSTREAM_SHA: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid upstream SHA: $UPSTREAM_SHA" >&2
+            exit 1
+          fi
+
+          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
+            echo "$UPSTREAM_SHA is already recorded as successfully published; skipping."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: guard
+    if: needs.guard.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -68,11 +100,14 @@ jobs:
 
       - name: Publish preview packages
         working-directory: source
+        env:
+          REPO: ${{ github.repository }}
+          UPSTREAM_SHA: ${{ inputs.commit }}
         run: |
-          # Preserve this repository's pkg.pr.new namespace while building
-          # directly from the upstream shallow checkout.
-          git remote set-url origin "https://github.com/${{ github.repository }}.git"
+          set -euo pipefail
           pnpm -w add -D pkg-pr-new
+
+          set +e
           pnpm exec pkg-pr-new publish --no-compact \
             './packages/solid' \
             './packages/solid-web' \
@@ -81,12 +116,49 @@ jobs:
             './packages/solid-element' \
             './packages/solid-h' \
             './packages/solid-html' \
-            './packages/babel-preset-solid'
+            './packages/babel-preset-solid' 2>&1 | tee /tmp/pkg-pr-new-publish.log
+          PUBLISH_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$PUBLISH_STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          # pkg-pr-new uploads before creating its GitHub check. Because the
+          # package SHA belongs to solidjs/solid rather than this repository,
+          # check creation can fail after every package was safely uploaded.
+          # Accept that known case only after verifying every package URL.
+          PACKAGES=(
+            'solid-js'
+            '@solidjs/web'
+            '@solidjs/signals'
+            '@solidjs/universal'
+            '@solidjs/element'
+            '@solidjs/h'
+            '@solidjs/html'
+            'babel-preset-solid'
+          )
+
+          MISSING=0
+          for PACKAGE in "${PACKAGES[@]}"; do
+            URL="https://pkg.pr.new/$REPO/$PACKAGE@$UPSTREAM_SHA"
+            if ! curl --retry 3 --retry-delay 1 --fail --silent --show-error --range 0-0 --output /dev/null "$URL"; then
+              echo "Published package is unavailable: $URL" >&2
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -ne 0 ]; then
+            echo "pkg-pr-new failed and one or more package URLs are unavailable" >&2
+            exit "$PUBLISH_STATUS"
+          fi
+
+          echo "pkg-pr-new returned $PUBLISH_STATUS after upload, but all expected package URLs are available; treating the publish as successful."
 
   record:
     name: Record preview result
-    needs: publish
-    if: always()
+    needs: [guard, publish]
+    if: always() && needs.guard.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -119,6 +191,9 @@ jobs:
             jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
               '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, runUrl: $runUrl}])' \
               db.json > db.json.tmp && mv db.json.tmp db.json
+            jq --arg sha "$UPSTREAM_SHA" \
+              '.failures = ((.failures // []) | map(select(.sha != $sha)))' \
+              failure.json > failure.json.tmp && mv failure.json.tmp failure.json
           else
             jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg conclusion "$CONCLUSION" --arg runUrl "$RUN_URL" \
               '.failures = ((.failures // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, conclusion: $conclusion, runUrl: $runUrl}])' \
