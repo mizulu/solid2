@@ -11,7 +11,8 @@ jobs:
     if: >
       github.event.issue.number == 2 &&
       (startsWith(github.event.comment.body, '/preview') ||
-       startsWith(github.event.comment.body, '/refresh'))
+       startsWith(github.event.comment.body, '/refresh') ||
+       startsWith(github.event.comment.body, '/latest'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,10 +49,10 @@ jobs:
                 exit 0
               fi
               ;;
-            /refresh)
+            /refresh|/latest)
               MODE="refresh"
-              if [ "$FIRST_LINE" != "/refresh" ]; then
-                gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, usage: \`/refresh\`"
+              if [ "$FIRST_LINE" != "$COMMAND" ]; then
+                gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, usage: \`$COMMAND\`"
                 exit 0
               fi
               SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
