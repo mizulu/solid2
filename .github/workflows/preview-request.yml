@@ -31,7 +31,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          FIRST_LINE=$(printf '%s' "$BODY" | head -1)
+          FIRST_LINE=$(printf '%s' "$BODY" | head -1 | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
           COMMAND=$(printf '%s' "$FIRST_LINE" | awk '{print $1}')
           MODE=""
 
