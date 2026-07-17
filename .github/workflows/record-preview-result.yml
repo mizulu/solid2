@@ -14,39 +14,47 @@ concurrency:
 
 jobs:
   record:
-    # The release workflow always runs from a generated mirror branch.
-    if: startsWith(github.event.workflow_run.head_branch, 'next-mirror') || startsWith(github.event.workflow_run.head_branch, 'preview-adhoc-')
     runs-on: ubuntu-latest
     steps:
       # This checkout is of the trusted default branch only. This job never
-      # checks out or executes the mirrored upstream source.
+      # checks out or executes the upstream source.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Record result and clean up ad-hoc mirror
+      - name: Download result metadata
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          EVENT: ${{ github.event.workflow_run.event }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
           REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          UPSTREAM_SHA=$(gh api "repos/$REPO/git/commits/$HEAD_SHA" --jq '.parents[0].sha')
+          ARTIFACT_ID=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "preview-result") | .id')
+          test -n "$ARTIFACT_ID"
+          gh api "repos/$REPO/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/preview-result.zip
+          unzip -p /tmp/preview-result.zip preview-result.json > /tmp/preview-result.json
+          jq -e '.sha | test("^[0-9a-f]{40}$")' /tmp/preview-result.json >/dev/null
+
+      - name: Record result
+        env:
+          RESULT: /tmp/preview-result.json
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA=$(jq -r .sha "$RESULT")
+          TRIGGER=$(jq -r .trigger "$RESULT")
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           test -f db.json || printf '{"builds":[]}\n' > db.json
           test -f failure.json || printf '{"failures":[]}\n' > failure.json
 
           if [ "$CONCLUSION" = success ]; then
-            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$EVENT" --arg runUrl "$RUN_URL" \
+            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
               '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, runUrl: $runUrl}])' \
               db.json > db.json.tmp && mv db.json.tmp db.json
           else
-            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$EVENT" --arg conclusion "$CONCLUSION" --arg runUrl "$RUN_URL" \
+            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg conclusion "$CONCLUSION" --arg runUrl "$RUN_URL" \
               '.failures = ((.failures // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, conclusion: $conclusion, runUrl: $runUrl}])' \
               failure.json > failure.json.tmp && mv failure.json.tmp failure.json
           fi
@@ -57,8 +65,4 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "ci: record preview result for ${UPSTREAM_SHA}"
             git push origin "HEAD:${{ github.event.repository.default_branch }}"
-          fi
-
-          if [[ "$BRANCH" == preview-adhoc-* ]]; then
-            gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH"
           fi

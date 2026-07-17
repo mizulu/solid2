@@ -1,4 +1,4 @@
-name: Sync Preview Mirror
+name: Check Upstream Preview
 
 on:
   schedule:
@@ -6,64 +6,44 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: "Upstream commit sha (or ref) to publish. Leave empty for the latest next."
+        description: "Upstream commit SHA to publish. Leave empty for the latest next."
         required: false
         default: ""
 
 permissions:
-  contents: write
   actions: write
+  contents: read
 
 concurrency:
   group: preview-sync-${{ inputs.commit || 'next' }}
   cancel-in-progress: false
 
 jobs:
-  sync:
+  dispatch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Mirror upstream commit plus publish workflow
+      - name: Find an unattempted upstream commit
+        id: target
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ inputs.commit }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/solidjs/solid.git
-
-          if [ -f db.json ] && jq -e --arg sha "$TARGET" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
-            echo "$TARGET has already been published"
-            exit 0
-          fi
-
+          set -euo pipefail
           if [ -n "$TARGET" ]; then
-            # ad-hoc publish of a selected upstream commit
             if ! [[ "$TARGET" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
               echo "commit must be a 7-40 character SHA" >&2
               exit 1
             fi
-            git fetch upstream next
-            git fetch upstream "$TARGET"
-            UPSTREAM_SHA=$(git rev-parse --verify "${TARGET}^{commit}")
-            BRANCH="preview-adhoc-${UPSTREAM_SHA:0:7}"
-          else
-            git fetch upstream next
-            UPSTREAM_SHA=$(git rev-parse upstream/next)
-            BRANCH=next-mirror
-            LAST_SYNCED=$(git rev-parse origin/next-mirror^ 2>/dev/null || echo none)
-            if [ "$UPSTREAM_SHA" = "$LAST_SYNCED" ]; then
-              echo "next-mirror already mirrors upstream ${UPSTREAM_SHA}"
-              exit 0
+            UPSTREAM_SHA=$(gh api "repos/solidjs/solid/commits/$TARGET" --jq .sha)
+            STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...next" --jq .status)
+            if [ "$STATUS" != behind ] && [ "$STATUS" != identical ]; then
+              echo "$UPSTREAM_SHA is not reachable from solidjs/solid next" >&2
+              exit 1
             fi
-          fi
-
-          if ! git merge-base --is-ancestor "$UPSTREAM_SHA" upstream/next; then
-            echo "$UPSTREAM_SHA is not reachable from solidjs/solid next" >&2
-            exit 1
+          else
+            UPSTREAM_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
           fi
 
           if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
@@ -71,19 +51,18 @@ jobs:
             exit 0
           fi
 
-          # Scheduled polling does not retry failures. An explicit /preview
-          # dispatch has a non-empty TARGET and is the manual retry path.
           if [ -z "$TARGET" ] && jq -e --arg sha "$UPSTREAM_SHA" '.failures[]? | select(.sha == $sha)' failure.json >/dev/null; then
             echo "$UPSTREAM_SHA previously failed; waiting for an explicit /preview retry"
             exit 0
           fi
 
-          git checkout -B "$BRANCH" "$UPSTREAM_SHA"
-          git checkout "${{ github.sha }}" -- .github/workflows/preview-release.yml
-          git add .github/workflows/preview-release.yml
-          git commit -m "ci: preview release workflow (upstream ${UPSTREAM_SHA})"
-          git push --force origin "$BRANCH"
+          echo "sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
 
-          # Pushes made with GITHUB_TOKEN never trigger push workflows,
-          # so dispatch the publish run explicitly.
-          gh workflow run preview-release.yml --repo "${{ github.repository }}" --ref "$BRANCH"
+      - name: Dispatch preview build
+        if: steps.target.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run preview-release.yml --repo "${{ github.repository }}" \
+            -f commit="${{ steps.target.outputs.sha }}" \
+            -f trigger="${{ inputs.commit && 'preview-request' || 'schedule' }}"

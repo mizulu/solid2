@@ -2,53 +2,71 @@ name: Preview Release (pkg.pr.new)
 
 on:
   workflow_dispatch:
+    inputs:
+      commit:
+        description: "Full solidjs/solid commit SHA to build"
+        required: true
+        type: string
+      trigger:
+        description: "Origin of this build request"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: preview-release-${{ github.ref_name }}
+  group: preview-release-${{ inputs.commit }}
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Write result metadata
+        run: |
+          printf '%s\n' '{"sha":"${{ inputs.commit }}","trigger":"${{ inputs.trigger }}"}' > preview-result.json
+
+      - name: Upload result metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-result
+          path: preview-result.json
+          retention-days: 1
+
       - uses: actions/checkout@v4
         with:
-          # need the parent commit available for the HEAD re-point below
-          fetch-depth: 2
-          # The checked-out upstream code runs package scripts; do not leave
-          # even the read-only workflow token in this git configuration.
+          repository: solidjs/solid
+          ref: ${{ inputs.commit }}
+          path: source
+          fetch-depth: 1
           persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: ".nvmrc"
+          node-version-file: "source/.nvmrc"
           cache: "pnpm"
+          cache-dependency-path: "source/pnpm-lock.yaml"
 
       - name: Install deps
+        working-directory: source
         run: pnpm install
 
-      # Upstream's turbo graph has a race: @solidjs/h#types (and web's) compile
-      # self-imports that resolve through a symlink created by the `link` task,
-      # but `types` doesn't depend on `link`. Create the symlinks up front.
       - name: Pre-link self-referencing packages
+        working-directory: source
         run: pnpm --filter @solidjs/web --filter @solidjs/h run link
 
       - name: Build
+        working-directory: source
         run: pnpm run build
 
-      # pkg-pr-new keys preview URLs off `git rev-parse HEAD` (for non-PR
-      # events). The mirror head is upstream/next + our workflow commit, so
-      # detach HEAD to the parent — the exact upstream solidjs/solid commit —
-      # to publish under Ryan's real sha. Build outputs are untracked and
-      # survive the checkout.
-      - name: Re-point HEAD at the upstream commit for the URL sha
-        run: git checkout --detach HEAD^
-
       - name: Publish preview packages
+        working-directory: source
         run: |
+          # Preserve this repository's pkg.pr.new namespace while building
+          # directly from the upstream shallow checkout.
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
           pnpm -w add -D pkg-pr-new
           pnpm exec pkg-pr-new publish --no-compact \
             './packages/solid' \
