@@ -19,6 +19,7 @@ jobs:
       issues: write
     outputs:
       sha: ${{ steps.request.outputs.sha }}
+      ledger: ${{ steps.request.outputs.ledger }}
     steps:
       - name: Parse and validate request
         id: request
@@ -62,6 +63,8 @@ jobs:
               ;;
           esac
 
+          NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
+
           STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status 2>/dev/null || true)
           # The compare is BASE_SHA...next, so "ahead" means next contains
           # commits after the requested SHA and the SHA is in its history.
@@ -70,8 +73,15 @@ jobs:
             exit 0
           fi
 
+          if [ "$MODE" = refresh ] || [ "$SHA" = "$NEXT_SHA" ]; then
+            LEDGER=success
+          else
+            LEDGER=preview
+          fi
+
           SUCCESS=$(gh api "repos/$REPO/contents/db.json" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || printf '{"builds":[]}')
-          if printf '%s' "$SUCCESS" | jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' >/dev/null; then
+          PREVIEWS=$(gh api "repos/$REPO/contents/db-preview.json" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || printf '{"builds":[]}')
+          if { printf '%s\n' "$SUCCESS"; printf '%s\n' "$PREVIEWS"; } | jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' >/dev/null; then
             gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, preview packages for \`$SHA\` are already published."
             exit 0
           fi
@@ -85,6 +95,7 @@ jobs:
           fi
 
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "ledger=$LEDGER" >> "$GITHUB_OUTPUT"
           SHORT=${SHA:0:7}
           gh issue comment "$ISSUE" --repo "$REPO" \
             --body "@$REQUESTED_BY, preview \`$SHORT\` has started. [Follow the run](https://github.com/$REPO/actions/runs/$GITHUB_RUN_ID)."
@@ -96,6 +107,7 @@ jobs:
     with:
       commit: ${{ needs.request.outputs.sha }}
       trigger: preview-request
+      ledger: ${{ needs.request.outputs.ledger }}
       request_issue: ${{ github.event.issue.number }}
       requested_by: ${{ github.event.comment.user.login }}
     permissions:

@@ -1,19 +1,14 @@
 {
   "builds": [
     {
-      "sha": "d2f83c02e4046c96ad4fe1a6b94bf32cbd476685",
-      "commitDate": "2026-07-17T18:09:06Z",
-      "completedAt": "2026-07-17T18:39:48Z"
-    },
-    {
-      "sha": "e156386ee2861e72faf7d5fed5bd05da455b1e71",
-      "commitDate": "2026-07-17T17:28:44Z",
-      "completedAt": "2026-07-17T19:34:06Z"
-    },
-    {
       "sha": "66a6c13292f8082e56ee8ee99a0214a8dce86e36",
       "commitDate": "2026-07-17T19:26:20Z",
       "completedAt": "2026-07-17T19:34:35Z"
+    },
+    {
+      "sha": "d2f83c02e4046c96ad4fe1a6b94bf32cbd476685",
+      "commitDate": "2026-07-17T18:09:06Z",
+      "completedAt": "2026-07-17T18:39:48Z"
     }
   ]
 }

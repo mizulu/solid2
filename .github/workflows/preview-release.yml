@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: ""
+      ledger:
+        description: "Successful-build ledger: success for next tips, preview for historical commits"
+        required: false
+        type: string
+        default: "success"
   workflow_dispatch:
     inputs:
       commit:
@@ -31,6 +36,14 @@ on:
         description: "Origin of this build request"
         required: true
         type: string
+      ledger:
+        description: "Successful-build ledger"
+        required: true
+        type: choice
+        default: "success"
+        options:
+          - success
+          - preview
 
 permissions: {}
 
@@ -56,6 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_SHA: ${{ inputs.commit }}
+          LEDGER: ${{ inputs.ledger || 'success' }}
         run: |
           set -euo pipefail
           if ! [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -63,7 +77,12 @@ jobs:
             exit 1
           fi
 
-          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
+          case "$LEDGER" in
+            success|preview) ;;
+            *) echo "Invalid ledger: $LEDGER" >&2; exit 1 ;;
+          esac
+
+          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json db-preview.json >/dev/null; then
             echo "$UPSTREAM_SHA is already recorded as successfully published; skipping."
             echo "should_build=false" >> "$GITHUB_OUTPUT"
           else
@@ -185,6 +204,7 @@ jobs:
         env:
           UPSTREAM_SHA: ${{ inputs.commit }}
           TRIGGER: ${{ inputs.trigger }}
+          LEDGER: ${{ inputs.ledger || 'success' }}
           CONCLUSION: ${{ needs.publish.result }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -197,12 +217,21 @@ jobs:
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           COMMIT_DATE=$(gh api "repos/solidjs/solid/commits/$UPSTREAM_SHA" --jq .commit.committer.date)
           test -f db.json || printf '{"builds":[]}\n' > db.json
+          test -f db-preview.json || printf '{"builds":[]}\n' > db-preview.json
           test -f failure.json || printf '{"failures":[]}\n' > failure.json
 
           if [ "$CONCLUSION" = success ]; then
+            case "$LEDGER" in
+              success) LEDGER_FILE=db.json; OTHER_LEDGER_FILE=db-preview.json ;;
+              preview) LEDGER_FILE=db-preview.json; OTHER_LEDGER_FILE=db.json ;;
+              *) echo "Invalid ledger: $LEDGER" >&2; exit 1 ;;
+            esac
             jq --arg sha "$UPSTREAM_SHA" --arg commitDate "$COMMIT_DATE" --arg completedAt "$NOW" \
-              '.builds = (((.builds // []) | map({sha, commitDate, completedAt}) | map(select(.sha != $sha))) + [{sha: $sha, commitDate: $commitDate, completedAt: $completedAt}])' \
-              db.json > db.json.tmp && mv db.json.tmp db.json
+              '.builds = (((.builds // []) | map({sha, commitDate, completedAt}) | map(select(.sha != $sha)) + [{sha: $sha, commitDate: $commitDate, completedAt: $completedAt}]) | sort_by(.commitDate) | reverse)' \
+              "$LEDGER_FILE" > "$LEDGER_FILE.tmp" && mv "$LEDGER_FILE.tmp" "$LEDGER_FILE"
+            jq --arg sha "$UPSTREAM_SHA" \
+              '.builds = (((.builds // []) | map(select(.sha != $sha))) | sort_by(.commitDate) | reverse)' \
+              "$OTHER_LEDGER_FILE" > "$OTHER_LEDGER_FILE.tmp" && mv "$OTHER_LEDGER_FILE.tmp" "$OTHER_LEDGER_FILE"
             jq --arg sha "$UPSTREAM_SHA" \
               '.failures = ((.failures // []) | map(select(.sha != $sha)))' \
               failure.json > failure.json.tmp && mv failure.json.tmp failure.json
@@ -214,7 +243,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add db.json failure.json
+          git add db.json db-preview.json failure.json
           if ! git diff --cached --quiet; then
             git commit -m "ci: record preview result for ${UPSTREAM_SHA}"
             git push origin "HEAD:${{ github.event.repository.default_branch }}"

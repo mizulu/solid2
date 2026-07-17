@@ -23,6 +23,7 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.target.outputs.sha }}
+      ledger: ${{ steps.target.outputs.ledger }}
     steps:
       - uses: actions/checkout@v5
 
@@ -33,6 +34,7 @@ jobs:
           TARGET: ${{ inputs.commit }}
         run: |
           set -euo pipefail
+          NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
           if [ -n "$TARGET" ]; then
             if ! [[ "$TARGET" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
               echo "commit must be a 7-40 character SHA" >&2
@@ -47,10 +49,16 @@ jobs:
               exit 1
             fi
           else
-            UPSTREAM_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
+            UPSTREAM_SHA=$NEXT_SHA
           fi
 
-          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
+          if [ "$UPSTREAM_SHA" = "$NEXT_SHA" ]; then
+            LEDGER=success
+          else
+            LEDGER=preview
+          fi
+
+          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json db-preview.json >/dev/null; then
             echo "$UPSTREAM_SHA has already been published"
             exit 0
           fi
@@ -61,6 +69,7 @@ jobs:
           fi
 
           echo "sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "ledger=$LEDGER" >> "$GITHUB_OUTPUT"
 
 
   publish:
@@ -70,6 +79,7 @@ jobs:
     with:
       commit: ${{ needs.dispatch.outputs.sha }}
       trigger: ${{ inputs.commit && 'manual' || 'schedule' }}
+      ledger: ${{ needs.dispatch.outputs.ledger }}
     permissions:
       contents: write
       issues: write
