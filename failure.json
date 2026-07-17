@@ -1,3 +1,11 @@
 {
-  "failures": []
+  "failures": [
+    {
+      "sha": "d2f83c02e4046c96ad4fe1a6b94bf32cbd476685",
+      "completedAt": "2026-07-17T18:18:54Z",
+      "trigger": "schedule",
+      "conclusion": "failure",
+      "runUrl": "https://github.com/mizulu/solid2/actions/runs/29603290285"
+    }
+  ]
 }
