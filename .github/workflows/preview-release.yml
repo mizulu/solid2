@@ -12,8 +12,7 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: preview-release-${{ inputs.commit }}
@@ -22,21 +21,11 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       TURBO_TELEMETRY_DISABLED: "1"
     steps:
-      - name: Write result metadata
-        run: |
-          printf '%s\n' '{"sha":"${{ inputs.commit }}","trigger":"${{ inputs.trigger }}"}' > preview-result.json
-
-      - name: Upload result metadata
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: preview-result
-          path: preview-result.json
-          retention-days: 1
-
       - uses: actions/checkout@v5
         with:
           repository: solidjs/solid
@@ -83,3 +72,73 @@ jobs:
             './packages/solid-h' \
             './packages/solid-html' \
             './packages/babel-preset-solid'
+
+  record:
+    name: Record preview result
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      # This is a separate runner and token from the upstream build job. It
+      # checks out only the trusted default branch and executes no upstream code.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Update build ledger
+        env:
+          UPSTREAM_SHA: ${{ inputs.commit }}
+          TRIGGER: ${{ inputs.trigger }}
+          CONCLUSION: ${{ needs.publish.result }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$UPSTREAM_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid upstream SHA: $UPSTREAM_SHA" >&2
+            exit 1
+          fi
+
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          test -f db.json || printf '{"builds":[]}\n' > db.json
+          test -f failure.json || printf '{"failures":[]}\n' > failure.json
+
+          if [ "$CONCLUSION" = success ]; then
+            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
+              '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, runUrl: $runUrl}])' \
+              db.json > db.json.tmp && mv db.json.tmp db.json
+          else
+            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg conclusion "$CONCLUSION" --arg runUrl "$RUN_URL" \
+              '.failures = ((.failures // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, conclusion: $conclusion, runUrl: $runUrl}])' \
+              failure.json > failure.json.tmp && mv failure.json.tmp failure.json
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add db.json failure.json
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: record preview result for ${UPSTREAM_SHA}"
+            git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          fi
+
+      - name: Announce successful preview in issue #1
+        if: always() && needs.publish.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ inputs.commit }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          SHORT=${SHA:0:7}
+          {
+            echo "✅ Preview packages built for \`$SHA\`. ([run]($RUN_URL))"
+            echo
+            echo '```sh'
+            echo "npm i https://pkg.pr.new/$REPO/solid-js@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/web@$SHORT"
+            echo '```'
+          } > /tmp/preview-success-comment.md
+          gh issue comment 1 --repo "$REPO" --body-file /tmp/preview-success-comment.md
