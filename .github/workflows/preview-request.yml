@@ -63,7 +63,9 @@ jobs:
           esac
 
           STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status 2>/dev/null || true)
-          if [ "$STATUS" != behind ] && [ "$STATUS" != identical ]; then
+          # The compare is BASE_SHA...next, so "ahead" means next contains
+          # commits after the requested SHA and the SHA is in its history.
+          if [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; then
             gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, commit \`$SHA\` is not reachable from solidjs/solid's \`next\` branch."
             exit 0
           fi

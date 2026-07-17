@@ -40,7 +40,9 @@ jobs:
             fi
             UPSTREAM_SHA=$(gh api "repos/solidjs/solid/commits/$TARGET" --jq .sha)
             STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...next" --jq .status)
-            if [ "$STATUS" != behind ] && [ "$STATUS" != identical ]; then
+            # The compare is BASE_SHA...next, so "ahead" means next contains
+            # commits after the requested SHA and the SHA is in its history.
+            if [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; then
               echo "$UPSTREAM_SHA is not reachable from solidjs/solid next" >&2
               exit 1
             fi
