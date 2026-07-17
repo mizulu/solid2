@@ -244,8 +244,8 @@ jobs:
             echo "npm i https://pkg.pr.new/$REPO/babel-preset-solid@$SHORT"
             echo '```'
             echo
-            echo "playground: \`mizulu/solid2@$SHORT\`"
-            echo "esm.sh: https://esm.sh/pr/mizulu/solid2/solid-js@$SHORT"
+            echo "playground: \`$REPO@$SHORT\`"
+            echo "esm.sh: https://esm.sh/pr/$REPO/solid-js@$SHORT"
           } > /tmp/preview-success-comment.md
           MAIN_BODY=$(cat /tmp/preview-success-comment.md)
           MAIN_COMMENT_URL=$(gh api --method POST "repos/$REPO/issues/1/comments" -f body="$MAIN_BODY" --jq .html_url)
