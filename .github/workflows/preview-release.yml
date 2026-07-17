@@ -11,6 +11,16 @@ on:
         description: "Origin of this build request"
         required: true
         type: string
+      request_issue:
+        description: "Issue where the request was made"
+        required: false
+        type: number
+        default: 0
+      requested_by:
+        description: "GitHub login that requested the build"
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       commit:
@@ -215,6 +225,8 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ inputs.commit }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REQUEST_ISSUE: ${{ inputs.request_issue || 0 }}
+          REQUESTED_BY: ${{ inputs.requested_by || '' }}
         run: |
           set -euo pipefail
           SHORT=${SHA:0:7}
@@ -235,4 +247,24 @@ jobs:
             echo "playground: \`mizulu/solid@$SHORT\`"
             echo "esm.sh: https://esm.sh/pr/mizulu/solid2/solid-js@$SHORT"
           } > /tmp/preview-success-comment.md
-          gh issue comment 1 --repo "$REPO" --body-file /tmp/preview-success-comment.md
+          MAIN_BODY=$(cat /tmp/preview-success-comment.md)
+          MAIN_COMMENT_URL=$(gh api --method POST "repos/$REPO/issues/1/comments" -f body="$MAIN_BODY" --jq .html_url)
+
+          if [ "$REQUEST_ISSUE" -gt 0 ] && [ -n "$REQUESTED_BY" ]; then
+            gh issue comment "$REQUEST_ISSUE" --repo "$REPO" \
+              --body "@$REQUESTED_BY, preview \`$SHORT\` is ready: $MAIN_COMMENT_URL"
+          fi
+
+      - name: Notify requester of failure
+        if: always() && needs.publish.result != 'success' && inputs.request_issue != 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ inputs.commit }}
+          REQUEST_ISSUE: ${{ inputs.request_issue }}
+          REQUESTED_BY: ${{ inputs.requested_by }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          SHORT=${SHA:0:7}
+          gh issue comment "$REQUEST_ISSUE" --repo "$REPO" \
+            --body "@$REQUESTED_BY, preview \`$SHORT\` failed: $RUN_URL"
