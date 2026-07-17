@@ -188,8 +188,8 @@ jobs:
           test -f failure.json || printf '{"failures":[]}\n' > failure.json
 
           if [ "$CONCLUSION" = success ]; then
-            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
-              '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha: $sha, completedAt: $completedAt, trigger: $trigger, runUrl: $runUrl}])' \
+            jq --arg sha "$UPSTREAM_SHA" --arg completedAt "$NOW" \
+              '.builds = (((.builds // []) | map({sha, completedAt}) | map(select(.sha != $sha))) + [{sha: $sha, completedAt: $completedAt}])' \
               db.json > db.json.tmp && mv db.json.tmp db.json
             jq --arg sha "$UPSTREAM_SHA" \
               '.failures = ((.failures // []) | map(select(.sha != $sha)))' \
@@ -219,11 +219,20 @@ jobs:
           set -euo pipefail
           SHORT=${SHA:0:7}
           {
-            echo "✅ Preview packages built for \`$SHA\`. ([run]($RUN_URL))"
+            echo "Preview packages built for \`$SHA\`. ([run]($RUN_URL))"
             echo
             echo '```sh'
             echo "npm i https://pkg.pr.new/$REPO/solid-js@$SHORT"
             echo "npm i https://pkg.pr.new/$REPO/@solidjs/web@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/signals@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/universal@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/element@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/h@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/html@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/babel-preset-solid@$SHORT"
             echo '```'
+            echo
+            echo "playground: \`mizulu/solid@$SHORT\`"
+            echo "esm.sh: https://esm.sh/pr/mizulu/solid2/solid-js@$SHORT"
           } > /tmp/preview-success-comment.md
           gh issue comment 1 --repo "$REPO" --body-file /tmp/preview-success-comment.md
