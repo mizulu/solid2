@@ -244,7 +244,7 @@ jobs:
             echo "npm i https://pkg.pr.new/$REPO/babel-preset-solid@$SHORT"
             echo '```'
             echo
-            echo "playground: \`mizulu/solid@$SHORT\`"
+            echo "playground: \`mizulu/solid2@$SHORT\`"
             echo "esm.sh: https://esm.sh/pr/mizulu/solid2/solid-js@$SHORT"
           } > /tmp/preview-success-comment.md
           MAIN_BODY=$(cat /tmp/preview-success-comment.md)
