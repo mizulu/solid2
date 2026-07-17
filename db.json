@@ -2,9 +2,11 @@
   "builds": [
     {
       "sha": "d2f83c02e4046c96ad4fe1a6b94bf32cbd476685",
-      "completedAt": "2026-07-17T18:39:48Z",
-      "trigger": "manual",
-      "runUrl": "https://github.com/mizulu/solid2/actions/runs/29604554224"
+      "completedAt": "2026-07-17T18:39:48Z"
+    },
+    {
+      "sha": "e156386ee2861e72faf7d5fed5bd05da455b1e71",
+      "completedAt": "2026-07-17T19:27:29Z"
     }
   ]
 }
