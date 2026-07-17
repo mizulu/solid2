@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: preview-ledger
@@ -18,7 +19,7 @@ jobs:
     steps:
       # This checkout is of the trusted default branch only. This job never
       # checks out or executes the upstream source.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.repository.default_branch }}
 
@@ -66,3 +67,24 @@ jobs:
             git commit -m "ci: record preview result for ${UPSTREAM_SHA}"
             git push origin "HEAD:${{ github.event.repository.default_branch }}"
           fi
+
+      - name: Announce successful preview in issue #1
+        if: github.event.workflow_run.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RESULT: /tmp/preview-result.json
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          SHA=$(jq -r .sha "$RESULT")
+          SHORT=${SHA:0:7}
+          {
+            echo "✅ Preview packages built for \`$SHA\`. ([run]($RUN_URL))"
+            echo
+            echo '```sh'
+            echo "npm i https://pkg.pr.new/$REPO/solid-js@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/web@$SHORT"
+            echo '```'
+          } > /tmp/preview-success-comment.md
+          gh issue comment 1 --repo "$REPO" --body-file /tmp/preview-success-comment.md
