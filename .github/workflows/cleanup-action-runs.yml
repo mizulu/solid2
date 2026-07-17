@@ -1,0 +1,52 @@
+name: Cleanup Action Runs
+
+on:
+  schedule:
+    # Run off the top of the hour to reduce scheduled-run delays.
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: cleanup-action-runs
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete completed runs older than 24 hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          CUTOFF=$(date -u -d '24 hours ago' +%s)
+          DELETED=0
+
+          while IFS=$'\t' read -r RUN_ID CREATED_AT; do
+            RUN_TIME=$(date -u -d "$CREATED_AT" +%s)
+            if [ "$RUN_TIME" -ge "$CUTOFF" ]; then
+              continue
+            fi
+
+            echo "Deleting completed run $RUN_ID from $CREATED_AT"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/$REPO/actions/runs/$RUN_ID"
+            DELETED=$((DELETED + 1))
+          done < <(
+            gh api \
+              --paginate \
+              --method GET \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/$REPO/actions/runs?status=completed&per_page=100" \
+              --jq '.workflow_runs[] | [.id, .created_at] | @tsv'
+          )
+
+          echo "Deleted $DELETED completed workflow run(s)."
