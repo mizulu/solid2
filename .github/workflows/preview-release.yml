@@ -202,6 +202,7 @@ jobs:
 
       - name: Update build ledger
         env:
+          GH_TOKEN: ${{ github.token }}
           UPSTREAM_SHA: ${{ inputs.commit }}
           TRIGGER: ${{ inputs.trigger }}
           LEDGER: ${{ inputs.ledger || 'success' }}
