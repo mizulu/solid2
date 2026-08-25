@@ -105,11 +105,12 @@ jobs:
           path: source
           fetch-depth: 1
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v2
         with:
           # The upstream manifest is checked out under source/, so this action
           # cannot discover its packageManager field from the workspace root.
           version: 11.1.1
+          install: false
       - uses: actions/setup-node@v5
         with:
           node-version-file: "source/.nvmrc"
@@ -140,13 +141,13 @@ jobs:
           set +e
           pnpm exec pkg-pr-new publish --no-compact \
             './packages/solid' \
-            './packages/solid-web' \
-            './packages/solid-signals' \
-            './packages/solid-universal' \
-            './packages/solid-element' \
-            './packages/solid-h' \
-            './packages/solid-html' \
-            './packages/babel-preset-solid' 2>&1 | tee /tmp/pkg-pr-new-publish.log
+            './packages/web' \
+            './packages/signals' \
+            './packages/universal' \
+            './packages/element' \
+            './packages/h' \
+            './packages/html' \
+            './packages/babel-plugin' 2>&1 | tee /tmp/pkg-pr-new-publish.log
           PUBLISH_STATUS=${PIPESTATUS[0]}
           set -e
 
@@ -166,7 +167,7 @@ jobs:
             '@solidjs/element'
             '@solidjs/h'
             '@solidjs/html'
-            'babel-preset-solid'
+            '@solidjs/babel-plugin'
           )
 
           MISSING=0
