@@ -125,6 +125,17 @@ jobs:
         working-directory: source
         run: pnpm --filter @solidjs/web --filter @solidjs/h run link
 
+      # The workspace compiler is used by the Vite plugin while building
+      # examples. The root build does not build its Rust/N-API binding.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: source/packages/compiler
+
+      - name: Build compiler binding
+        working-directory: source
+        run: pnpm --filter @solidjs/compiler run build
+
       - name: Build
         working-directory: source
         run: pnpm run build
