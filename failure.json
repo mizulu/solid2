@@ -247,10 +247,10 @@
     },
     {
       "sha": "ec5236076e5b229aa870071215d37e8ec146db72",
-      "completedAt": "2026-08-29T11:03:27Z",
-      "trigger": "schedule",
+      "completedAt": "2026-08-29T17:41:41Z",
+      "trigger": "manual",
       "conclusion": "failure",
-      "runUrl": "https://github.com/mizulu/solid2/actions/runs/33249162619"
+      "runUrl": "https://github.com/mizulu/solid2/actions/runs/33266241065"
     }
   ]
 }
