@@ -137,9 +137,9 @@ jobs:
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           MIRROR_URL="https://pkg.pr.new/$REPO/@solidjs/vite-plugin@$SHA"
           UPSTREAM_URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
-          UPSTREAM_LINE=""
+          UPSTREAM_STATUS="not available yet"
           if curl --retry 3 --retry-delay 1 --fail --silent --show-error --range 0-0 --output /dev/null "$UPSTREAM_URL"; then
-            UPSTREAM_LINE=$'\nUpstream preview (already available): '"$UPSTREAM_URL"
+            UPSTREAM_STATUS="available"
           fi
           jq --arg sha "$SHA" --arg completedAt "$NOW" --arg url "$MIRROR_URL" \
             '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha:$sha, completedAt:$completedAt, url:$url}])' \
@@ -150,7 +150,15 @@ jobs:
           git add vite-plugin-previews.json
           git commit -m "ci: record Vite plugin preview for $SHA"
           git push origin "HEAD:${{ github.event.repository.default_branch }}"
-          gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` is ready: $MIRROR_URL (run: $RUN_URL)$UPSTREAM_LINE"
+          BODY=$(cat <<EOF
+Vite plugin preview for `$SHA` is ready.
+
+- Mirror preview: [$MIRROR_URL]($MIRROR_URL)
+- Upstream preview: [$UPSTREAM_URL]($UPSTREAM_URL) ($UPSTREAM_STATUS)
+- Workflow run: [$RUN_URL]($RUN_URL)
+EOF
+          )
+          gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
 
   failure:
     needs: [target, publish]
