@@ -98,8 +98,8 @@ jobs:
         run: |
           set -euo pipefail
           pnpm -w add -D pkg-pr-new
-          # The checked-out repository is itself the package to publish; the
-          # root-package form must omit a positional `.` argument.
+          # Explicitly select the checked-out root package so the upload can be
+          # verified independently if pkg.pr.new's check integration fails.
           # This is a cross-repository commit, so pkg.pr.new may fail while
           # creating its normal GitHub check against mizulu/solid2 after the
           # package has already uploaded. Mirror the Solid preview workflow:
