@@ -97,7 +97,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          pnpm add -D pkg-pr-new
+          pnpm -w add -D pkg-pr-new
           # The checked-out repository is itself the package to publish; the
           # root-package form must omit a positional `.` argument.
           pnpm exec pkg-pr-new publish --no-compact 2>&1 | tee /tmp/pkg-pr-new.log
