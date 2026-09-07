@@ -100,10 +100,28 @@ jobs:
           pnpm -w add -D pkg-pr-new
           # The checked-out repository is itself the package to publish; the
           # root-package form must omit a positional `.` argument.
-          # This is a cross-repository commit, so pkg.pr.new cannot create its
-          # normal GitHub check against mizulu/solid2. Keep publication but
-          # use our own issue #3 notification below.
-          pnpm exec pkg-pr-new publish --no-compact --comment=off --json /tmp/pkg-pr-new.json 2>&1 | tee /tmp/pkg-pr-new.log
+          # This is a cross-repository commit, so pkg.pr.new may fail while
+          # creating its normal GitHub check against mizulu/solid2 after the
+          # package has already uploaded. Mirror the Solid preview workflow:
+          # retain the error status, then accept it only if the package URL is
+          # actually available.
+          set +e
+          pnpm exec pkg-pr-new publish --no-compact --comment=off --json /tmp/pkg-pr-new.json './' 2>&1 | tee /tmp/pkg-pr-new.log
+          PUBLISH_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$PUBLISH_STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
+          if curl --retry 10 --retry-delay 2 --fail --silent --show-error --range 0-0 --output /dev/null "$URL"; then
+            echo "pkg-pr-new returned $PUBLISH_STATUS after upload, but the preview URL is available; treating the publish as successful."
+            exit 0
+          fi
+
+          echo "pkg-pr-new failed and the preview URL is unavailable: $URL" >&2
+          exit "$PUBLISH_STATUS"
       - name: Record and announce preview
         env:
           GH_TOKEN: ${{ github.token }}
