@@ -147,4 +147,5 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ needs.target.outputs.sha }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` failed: $RUN_URL"
+        run: |
+          gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` failed: $RUN_URL"
