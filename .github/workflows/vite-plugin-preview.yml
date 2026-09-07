@@ -100,7 +100,10 @@ jobs:
           pnpm -w add -D pkg-pr-new
           # The checked-out repository is itself the package to publish; the
           # root-package form must omit a positional `.` argument.
-          pnpm exec pkg-pr-new publish --no-compact 2>&1 | tee /tmp/pkg-pr-new.log
+          # This is a cross-repository commit, so pkg.pr.new cannot create its
+          # normal GitHub check against mizulu/solid2. Keep publication but
+          # use our own issue #3 notification below.
+          pnpm exec pkg-pr-new publish --no-compact --comment=off --json /tmp/pkg-pr-new.json 2>&1 | tee /tmp/pkg-pr-new.log
       - name: Record and announce preview
         env:
           GH_TOKEN: ${{ github.token }}
