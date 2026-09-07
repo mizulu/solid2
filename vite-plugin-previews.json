@@ -1,1 +1,9 @@
-{"builds":[]}
+{
+  "builds": [
+    {
+      "sha": "0985ce8c258da420cbf1606b64790202a1fb1be3",
+      "completedAt": "2026-09-07T20:48:23Z",
+      "url": "https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@0985ce8c258da420cbf1606b64790202a1fb1be3"
+    }
+  ]
+}
