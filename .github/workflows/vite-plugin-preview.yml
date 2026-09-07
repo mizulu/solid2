@@ -139,7 +139,7 @@ jobs:
           UPSTREAM_URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
           UPSTREAM_LINE=""
           if curl --retry 3 --retry-delay 1 --fail --silent --show-error --range 0-0 --output /dev/null "$UPSTREAM_URL"; then
-            UPSTREAM_LINE="\nUpstream preview (already available): $UPSTREAM_URL"
+            UPSTREAM_LINE=$'\nUpstream preview (already available): '"$UPSTREAM_URL"
           fi
           jq --arg sha "$SHA" --arg completedAt "$NOW" --arg url "$MIRROR_URL" \
             '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha:$sha, completedAt:$completedAt, url:$url}])' \
