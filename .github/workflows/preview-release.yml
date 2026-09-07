@@ -285,7 +285,7 @@ jobs:
             echo "npm i https://pkg.pr.new/$REPO/@solidjs/element@$SHORT"
             echo "npm i https://pkg.pr.new/$REPO/@solidjs/h@$SHORT"
             echo "npm i https://pkg.pr.new/$REPO/@solidjs/html@$SHORT"
-            echo "npm i https://pkg.pr.new/$REPO/babel-preset-solid@$SHORT"
+            echo "npm i https://pkg.pr.new/$REPO/@solidjs/babel-plugin@$SHORT"
             echo '```'
             echo
             echo "playground: \`$REPO@$SHORT\`"

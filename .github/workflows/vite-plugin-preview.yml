@@ -1,0 +1,150 @@
+name: Check Vite Plugin Preview
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "solid-vite-plugin commit SHA. Leave empty for next."
+        required: false
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: vite-plugin-preview-${{ inputs.commit || 'next' }}
+  cancel-in-progress: false
+
+env:
+  ISSUE: "3"
+  UPSTREAM_REPO: solidjs/solid-vite-plugin
+
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve unattempted next commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TARGET" ]; then
+            if ! [[ "$TARGET" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "commit must be a 7-40 character SHA" >&2
+              exit 1
+            fi
+            SHA=$(gh api "repos/$UPSTREAM_REPO/commits/$TARGET" --jq .sha)
+          else
+            SHA=$(git ls-remote "https://github.com/$UPSTREAM_REPO.git" refs/heads/next | cut -f1)
+          fi
+          if jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' vite-plugin-previews.json >/dev/null; then
+            echo "$SHA is already recorded"
+            exit 0
+          fi
+          if [ -z "$TARGET" ] && jq -e --arg sha "$SHA" '.failures[]? | select(.sha == $sha)' vite-plugin-failures.json >/dev/null; then
+            echo "$SHA previously failed; waiting for a manual retry"
+            exit 0
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: target
+    if: needs.target.outputs.sha != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      SHA: ${{ needs.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: solidjs/solid-vite-plugin
+          ref: ${{ needs.target.outputs.sha }}
+          path: vite-plugin
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: pnpm/setup@v2
+        with:
+          version: 11.1.1
+          install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: vite-plugin/.nvmrc
+          cache: pnpm
+          cache-dependency-path: vite-plugin/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: vite-plugin
+        run: pnpm install --frozen-lockfile
+      - name: Build plugin
+        working-directory: vite-plugin
+        run: pnpm run build
+      - name: Publish preview package
+        working-directory: vite-plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pnpm add -D pkg-pr-new
+          pnpm exec pkg-pr-new publish --no-compact . 2>&1 | tee /tmp/pkg-pr-new.log
+      - name: Record and announce preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
+          jq --arg sha "$SHA" --arg completedAt "$NOW" --arg url "$URL" \
+            '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha:$sha, completedAt:$completedAt, url:$url}])' \
+            vite-plugin-previews.json > vite-plugin-previews.json.tmp
+          mv vite-plugin-previews.json.tmp vite-plugin-previews.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vite-plugin-previews.json
+          git commit -m "ci: record Vite plugin preview for $SHA"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` is ready: $URL (run: $RUN_URL)"
+
+  failure:
+    needs: [target, publish]
+    if: always() && needs.target.outputs.sha != '' && needs.publish.result != 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record failure
+        env:
+          SHA: ${{ needs.target.outputs.sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq --arg sha "$SHA" --arg completedAt "$NOW" --arg runUrl "$RUN_URL" \
+            '.failures = ((.failures // []) | map(select(.sha != $sha)) + [{sha:$sha, completedAt:$completedAt, runUrl:$runUrl}])' \
+            vite-plugin-failures.json > vite-plugin-failures.json.tmp
+          mv vite-plugin-failures.json.tmp vite-plugin-failures.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vite-plugin-failures.json
+          git commit -m "ci: record failed Vite plugin preview for $SHA"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.target.outputs.sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` failed: $RUN_URL"
