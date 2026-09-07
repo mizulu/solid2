@@ -97,6 +97,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Publish under the repository that owns this workflow. This avoids
+          # cross-repository workflow association errors in pkg.pr.new.
+          jq '.repository = {type: "git", url: "git+https://github.com/mizulu/solid2.git"}' \
+            package.json > package.json.tmp
+          mv package.json.tmp package.json
           pnpm -w add -D pkg-pr-new
           # Explicitly select the checked-out root package so the upload can be
           # verified independently if pkg.pr.new's check integration fails.
@@ -114,7 +119,7 @@ jobs:
             exit 0
           fi
 
-          URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
+          URL="https://pkg.pr.new/$REPO/@solidjs/vite-plugin@$SHA"
           if curl --retry 10 --retry-delay 2 --fail --silent --show-error --range 0-0 --output /dev/null "$URL"; then
             echo "pkg-pr-new returned $PUBLISH_STATUS after upload, but the preview URL is available; treating the publish as successful."
             exit 0
@@ -130,8 +135,13 @@ jobs:
         run: |
           set -euo pipefail
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
-          jq --arg sha "$SHA" --arg completedAt "$NOW" --arg url "$URL" \
+          MIRROR_URL="https://pkg.pr.new/$REPO/@solidjs/vite-plugin@$SHA"
+          UPSTREAM_URL="https://pkg.pr.new/solidjs/solid-vite-plugin/@solidjs/vite-plugin@$SHA"
+          UPSTREAM_LINE=""
+          if curl --retry 3 --retry-delay 1 --fail --silent --show-error --range 0-0 --output /dev/null "$UPSTREAM_URL"; then
+            UPSTREAM_LINE="\nUpstream preview (already available): $UPSTREAM_URL"
+          fi
+          jq --arg sha "$SHA" --arg completedAt "$NOW" --arg url "$MIRROR_URL" \
             '.builds = ((.builds // []) | map(select(.sha != $sha)) + [{sha:$sha, completedAt:$completedAt, url:$url}])' \
             vite-plugin-previews.json > vite-plugin-previews.json.tmp
           mv vite-plugin-previews.json.tmp vite-plugin-previews.json
@@ -140,7 +150,7 @@ jobs:
           git add vite-plugin-previews.json
           git commit -m "ci: record Vite plugin preview for $SHA"
           git push origin "HEAD:${{ github.event.repository.default_branch }}"
-          gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` is ready: $URL (run: $RUN_URL)"
+          gh issue comment "$ISSUE" --repo "$REPO" --body "Vite plugin preview for `$SHA` is ready: $MIRROR_URL (run: $RUN_URL)$UPSTREAM_LINE"
 
   failure:
     needs: [target, publish]
