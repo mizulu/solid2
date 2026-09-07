@@ -79,7 +79,9 @@ jobs:
           install: false
       - uses: actions/setup-node@v5
         with:
-          node-version-file: vite-plugin/.nvmrc
+          # solid-vite-plugin does not carry an .nvmrc; its package.json
+          # supports Node 20.19+ or 22.12+, so use the current LTS line.
+          node-version: 24
           cache: pnpm
           cache-dependency-path: vite-plugin/pnpm-lock.yaml
       - name: Install dependencies
