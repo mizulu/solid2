@@ -55,13 +55,18 @@ jobs:
             UPSTREAM_SHA=$NEXT_SHA
           fi
 
-          if [ "$UPSTREAM_SHA" = "$NEXT_SHA" ]; then
+          if [ -z "$TARGET" ]; then
             LEDGER=success
           else
-            LEDGER=preview
+            NEXT_STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...next" --jq .status)
+            if [ "$NEXT_STATUS" = ahead ] || [ "$NEXT_STATUS" = identical ]; then
+              LEDGER=success
+            else
+              LEDGER=preview
+            fi
           fi
 
-          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json db-preview.json >/dev/null; then
+          if jq -e --arg sha "$UPSTREAM_SHA" '.builds[]? | select(.sha == $sha)' db.json >/dev/null; then
             echo "$UPSTREAM_SHA has already been published"
             exit 0
           fi

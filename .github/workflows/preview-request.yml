@@ -75,15 +75,19 @@ jobs:
             exit 0
           fi
 
-          if [ "$MODE" = refresh ] || [ "$SHA" = "$NEXT_SHA" ]; then
+          if [ "$MODE" = refresh ]; then
             LEDGER=success
           else
-            LEDGER=preview
+            NEXT_STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status)
+            if [ "$NEXT_STATUS" = ahead ] || [ "$NEXT_STATUS" = identical ]; then
+              LEDGER=success
+            else
+              LEDGER=preview
+            fi
           fi
 
           SUCCESS=$(gh api "repos/$REPO/contents/db.json" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || printf '{"builds":[]}')
-          PREVIEWS=$(gh api "repos/$REPO/contents/db-preview.json" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || printf '{"builds":[]}')
-          if { printf '%s\n' "$SUCCESS"; printf '%s\n' "$PREVIEWS"; } | jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' >/dev/null; then
+          if printf '%s\n' "$SUCCESS" | jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' >/dev/null; then
             gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, preview packages for \`$SHA\` are already published."
             exit 0
           fi
