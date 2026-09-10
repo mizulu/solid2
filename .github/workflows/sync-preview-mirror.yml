@@ -32,6 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ inputs.commit }}
+          BASELINE_SHA: ff4d3c4479163fbdd3327f5b22d0c3ea7bd1a2c5
         run: |
           set -euo pipefail
           NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
@@ -41,11 +42,13 @@ jobs:
               exit 1
             fi
             UPSTREAM_SHA=$(gh api "repos/solidjs/solid/commits/$TARGET" --jq .sha)
-            STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...next" --jq .status)
-            # The compare is BASE_SHA...next, so "ahead" means next contains
-            # commits after the requested SHA and the SHA is in its history.
+            # Explicit requests may target a branch or PR commit that is not
+            # merged into next, but must be in solidjs/solid and descend from
+            # the 2.0.0-rc.0 baseline. A fork-only commit is rejected by the
+            # commit lookup above because it is not present in solidjs/solid.
+            STATUS=$(gh api "repos/solidjs/solid/compare/$BASELINE_SHA...$UPSTREAM_SHA" --jq .status)
             if [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; then
-              echo "$UPSTREAM_SHA is not reachable from solidjs/solid next" >&2
+              echo "$UPSTREAM_SHA is not a descendant of Solid 2.0.0-rc.0 ($BASELINE_SHA); refusing to publish" >&2
               exit 1
             fi
           else
