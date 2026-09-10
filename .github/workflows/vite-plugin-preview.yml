@@ -151,12 +151,12 @@ jobs:
           git commit -m "ci: record Vite plugin preview for $SHA"
           git push origin "HEAD:${{ github.event.repository.default_branch }}"
           BODY=$(cat <<EOF
-Vite plugin preview for `$SHA` is ready.
+          Vite plugin preview for `$SHA` is ready.
 
-- Mirror preview: [$MIRROR_URL]($MIRROR_URL)
-- Upstream preview: [$UPSTREAM_URL]($UPSTREAM_URL) ($UPSTREAM_STATUS)
-- Workflow run: [$RUN_URL]($RUN_URL)
-EOF
+          - Mirror preview: [$MIRROR_URL]($MIRROR_URL)
+          - Upstream preview: [$UPSTREAM_URL]($UPSTREAM_URL) ($UPSTREAM_STATUS)
+          - Workflow run: [$RUN_URL]($RUN_URL)
+          EOF
           )
           gh issue comment "$ISSUE" --repo "$REPO" --body "$BODY"
 
