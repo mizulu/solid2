@@ -9,7 +9,7 @@ permissions: {}
 jobs:
   request:
     if: >
-      github.event.issue.number == 2 &&
+      github.event.issue.number == 3 &&
       (startsWith(github.event.comment.body, '/preview') ||
        startsWith(github.event.comment.body, '/refresh') ||
        startsWith(github.event.comment.body, '/latest'))
@@ -30,6 +30,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
           REQUESTED_BY: ${{ github.event.comment.user.login }}
           REPO: ${{ github.repository }}
+          BASELINE_SHA: ff4d3c4479163fbdd3327f5b22d0c3ea7bd1a2c5
         run: |
           set -euo pipefail
           FIRST_LINE=$(printf '%s' "$BODY" | head -1 | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -41,7 +42,7 @@ jobs:
               MODE="preview"
               REQUESTED=$(printf '%s' "$FIRST_LINE" | grep -oE '^/preview[[:space:]]+[0-9a-fA-F]{7,40}$' | grep -oE '[0-9a-fA-F]{7,40}$' || true)
               if [ -z "$REQUESTED" ]; then
-                gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, usage: \`/preview <commit sha>\` — a 7-40 character SHA from solidjs/solid's \`next\` branch."
+                gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, usage: \`/preview <commit sha>\` — a 7-40 character SHA from solidjs/solid based on the 2.0.0-rc.0 baseline."
                 exit 0
               fi
               SHA=$(gh api "repos/solidjs/solid/commits/$REQUESTED" --jq .sha 2>/dev/null || true)
@@ -65,11 +66,12 @@ jobs:
 
           NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
 
-          STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status 2>/dev/null || true)
-          # The compare is BASE_SHA...next, so "ahead" means next contains
-          # commits after the requested SHA and the SHA is in its history.
+          STATUS=$(gh api "repos/solidjs/solid/compare/$BASELINE_SHA...$SHA" --jq .status 2>/dev/null || true)
+          # Explicit requests may target commits on Solid branches or PRs
+          # that are not merged into next. The commit must exist in the
+          # solidjs/solid repository and descend from the 2.0.0-rc.0 baseline.
           if [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; then
-            gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, commit \`$SHA\` is not reachable from solidjs/solid's \`next\` branch."
+            gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, commit \`$SHA\` is not based on Solid 2.0.0-rc.0 or is not in solidjs/solid."
             exit 0
           fi
 
