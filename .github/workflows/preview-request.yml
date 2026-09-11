@@ -9,7 +9,7 @@ permissions: {}
 jobs:
   request:
     if: >
-      github.event.issue.number == 3 &&
+      github.event.issue.number == 2 &&
       (startsWith(github.event.comment.body, '/preview') ||
        startsWith(github.event.comment.body, '/refresh') ||
        startsWith(github.event.comment.body, '/latest'))
