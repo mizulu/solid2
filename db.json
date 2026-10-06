@@ -1,6 +1,12 @@
 {
   "builds": [
     {
+      "sha": "60d2f1ded62e818811b83187efbd1a0fecdd45fa",
+      "commitDate": "2026-10-06T21:28:21Z",
+      "completedAt": "2026-10-06T22:18:06Z",
+      "preview": true
+    },
+    {
       "sha": "9d89df731367a126e93a4406645c83225823999b",
       "commitDate": "2026-10-06T19:09:07Z",
       "completedAt": "2026-10-06T19:58:11Z",
