@@ -44,6 +44,11 @@
       "sha": "44d90fd7fb8ae6d0efc6a42c82ad2d91adc3658a",
       "completedAt": "2026-10-09T13:17:59Z",
       "url": "https://pkg.pr.new/mizulu/solid2/@solidjs/vite-plugin@44d90fd7fb8ae6d0efc6a42c82ad2d91adc3658a"
+    },
+    {
+      "sha": "253483db861bfe7ed03c5e4e9632d8fced41634f",
+      "completedAt": "2026-10-13T14:12:37Z",
+      "url": "https://pkg.pr.new/mizulu/solid2/@solidjs/vite-plugin@253483db861bfe7ed03c5e4e9632d8fced41634f"
     }
   ]
 }
