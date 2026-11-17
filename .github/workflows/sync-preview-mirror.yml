@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: "Upstream commit SHA to publish. Leave empty for the latest next."
+        description: "Upstream commit SHA to publish. Leave empty for the latest main."
         required: false
         default: ""
 
 permissions: {}
 
 concurrency:
-  group: preview-sync-${{ inputs.commit || 'next' }}
+  group: preview-sync-${{ inputs.commit || 'main' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
           BASELINE_SHA: ff4d3c4479163fbdd3327f5b22d0c3ea7bd1a2c5
         run: |
           set -euo pipefail
-          NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
+          MAIN_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/main | cut -f1)
           if [ -n "$TARGET" ]; then
             if ! [[ "$TARGET" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
               echo "commit must be a 7-40 character SHA" >&2
@@ -43,7 +43,7 @@ jobs:
             fi
             UPSTREAM_SHA=$(gh api "repos/solidjs/solid/commits/$TARGET" --jq .sha)
             # Explicit requests may target a branch or PR commit that is not
-            # merged into next, but must be in solidjs/solid and descend from
+            # merged into main, but must be in solidjs/solid and descend from
             # the 2.0.0-rc.0 baseline. A fork-only commit is rejected by the
             # commit lookup above because it is not present in solidjs/solid.
             STATUS=$(gh api "repos/solidjs/solid/compare/$BASELINE_SHA...$UPSTREAM_SHA" --jq .status)
@@ -52,14 +52,14 @@ jobs:
               exit 1
             fi
           else
-            UPSTREAM_SHA=$NEXT_SHA
+            UPSTREAM_SHA=$MAIN_SHA
           fi
 
           if [ -z "$TARGET" ]; then
             LEDGER=success
           else
-            NEXT_STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...next" --jq .status)
-            if [ "$NEXT_STATUS" = ahead ] || [ "$NEXT_STATUS" = identical ]; then
+            MAIN_STATUS=$(gh api "repos/solidjs/solid/compare/$UPSTREAM_SHA...main" --jq .status)
+            if [ "$MAIN_STATUS" = ahead ] || [ "$MAIN_STATUS" = identical ]; then
               LEDGER=success
             else
               LEDGER=preview

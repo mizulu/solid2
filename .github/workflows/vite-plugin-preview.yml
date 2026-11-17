@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: "solid-vite-plugin commit SHA. Leave empty for next."
+        description: "solid-vite-plugin commit SHA. Leave empty for the latest main."
         required: false
         default: ""
 
 permissions: {}
 
 concurrency:
-  group: vite-plugin-preview-${{ inputs.commit || 'next' }}
+  group: vite-plugin-preview-${{ inputs.commit || 'main' }}
   cancel-in-progress: false
 
 env:
@@ -29,7 +29,7 @@ jobs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - uses: actions/checkout@v5
-      - name: Resolve unattempted next commit
+      - name: Resolve unattempted main commit
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,7 +43,7 @@ jobs:
             fi
             SHA=$(gh api "repos/$UPSTREAM_REPO/commits/$TARGET" --jq .sha)
           else
-            SHA=$(git ls-remote "https://github.com/$UPSTREAM_REPO.git" refs/heads/next | cut -f1)
+            SHA=$(git ls-remote "https://github.com/$UPSTREAM_REPO.git" refs/heads/main | cut -f1)
           fi
           if jq -e --arg sha "$SHA" '.builds[]? | select(.sha == $sha)' vite-plugin-previews.json >/dev/null; then
             echo "$SHA is already recorded"

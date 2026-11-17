@@ -57,18 +57,18 @@ jobs:
                 gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, usage: \`$COMMAND\`"
                 exit 0
               fi
-              SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
+              SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/main | cut -f1)
               ;;
             *)
               exit 0
               ;;
           esac
 
-          NEXT_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/next | cut -f1)
+          MAIN_SHA=$(git ls-remote https://github.com/solidjs/solid.git refs/heads/main | cut -f1)
 
           STATUS=$(gh api "repos/solidjs/solid/compare/$BASELINE_SHA...$SHA" --jq .status 2>/dev/null || true)
           # Explicit requests may target commits on Solid branches or PRs
-          # that are not merged into next. The commit must exist in the
+          # that are not merged into main. The commit must exist in the
           # solidjs/solid repository and descend from the 2.0.0-rc.0 baseline.
           if [ "$STATUS" != ahead ] && [ "$STATUS" != identical ]; then
             gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, commit \`$SHA\` is not based on Solid 2.0.0-rc.0 or is not in solidjs/solid."
@@ -78,8 +78,8 @@ jobs:
           if [ "$MODE" = refresh ]; then
             LEDGER=success
           else
-            NEXT_STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...next" --jq .status)
-            if [ "$NEXT_STATUS" = ahead ] || [ "$NEXT_STATUS" = identical ]; then
+            MAIN_STATUS=$(gh api "repos/solidjs/solid/compare/$SHA...main" --jq .status)
+            if [ "$MAIN_STATUS" = ahead ] || [ "$MAIN_STATUS" = identical ]; then
               LEDGER=success
             else
               LEDGER=preview
@@ -95,7 +95,7 @@ jobs:
           if [ "$MODE" = refresh ]; then
             FAILURES=$(gh api "repos/$REPO/contents/failure.json" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || printf '{"failures":[]}')
             if printf '%s' "$FAILURES" | jq -e --arg sha "$SHA" '.failures[]? | select(.sha == $sha)' >/dev/null; then
-              gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, the latest \`next\` commit \`$SHA\` previously failed. Use \`/preview $SHA\` to retry it."
+              gh issue comment "$ISSUE" --repo "$REPO" --body "@$REQUESTED_BY, the latest \`main\` commit \`$SHA\` previously failed. Use \`/preview $SHA\` to retry it."
               exit 0
             fi
           fi
